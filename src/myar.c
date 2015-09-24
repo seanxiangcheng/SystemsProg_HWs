@@ -10,29 +10,19 @@
 #include <unistd.h> 
 #include <stdio.h> 
 #include <errno.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
-
-// 'q': quickly append named files to archive
-int append_files (int argc, char **argv);
-
-// 'x' : extract named files; 'xo': extract named files restoring mtime
-int extract_files (int argc, char **argv, int xo);
-
-// 't' : print a concise table of contents of the archive
-// 'tv': print a verbose table of contents of the archive
-int print_table (int argc, char **argv, int tv);
-
-// 'd' : delete named files from archive
-int delete_files (int argc, char **argv);
-
-// 'A' : quickly append all 'regular' files in the current directory
-int append_dir (int argc, char **argv);
-
-
+int append_files (int argc, char **argv);// 'q': quickly append named files to archive
+int extract_files (int argc, char **argv, int xo);// 'x' : extract named files; 'xo': extract named files restoring mtime
+int print_table (int argc, char **argv, int tv);// 't' : print a concise table of contents of the archive; 'tv': print a verbose table of contents of the archive
+int delete_files (int argc, char **argv);// 'd' : delete named files from archive
+int append_dir (int argc, char **argv);// 'A' : quickly append all 'regular' files in the current directory
 void usage();
-
 void wrong_key(char *arg);
-
+void arc_access_error(char *arc);
+void arc_read_error(char *arc);
 int main(int argc, char **argv)
 {
     int key_len = 0;
@@ -122,7 +112,22 @@ int extract_files (int argc, char **argv, int xo)
 // 'tv': print a verbose table of contents of the archive
 int print_table (int argc, char **argv, int tv)
 {
+    int fd = open(argv[2], O_RDONLY);
     struct ar_hdr header;
+    char ar_mag_str[SARMAG];
+    int len_read = 0;
+    
+    if (fd == -1)
+        arc_read_error(argv[2]);
+    
+    while (len_read < SARMAG){
+        len_read += read(fd, ar_mag_str+len_read, SARMAG-len_read);
+        if (len_read==-1)
+            perror("    Error: print_table(): read failure");
+        exit(EXIT_FAILURE);
+    }
+    check_ar_type(char *ar_mag_str);
+    
     
     return(0);
 }
@@ -157,4 +162,10 @@ void wrong_key(char *arg)
     printf("    Error: key \"%s\" not available in command myar!\n", arg);
     usage();
     exit(EXIT_FAILURE);  
+}
+
+void arc_read_error(char *arc)
+{
+    printf("    Error: \"%s\": No such file or directory\n", arc);
+    exit(EXIT_FAILURE);
 }
