@@ -13,6 +13,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <string.h>
 
 int append_files (int argc, char **argv);// 'q': quickly append named files to archive
 int extract_files (int argc, char **argv, int xo);// 'x' : extract named files; 'xo': extract named files restoring mtime
@@ -23,6 +24,8 @@ void usage();
 void wrong_key(char *arg);
 void arc_access_error(char *arc);
 void arc_read_error(char *arc);
+void check_ar_type(char *mag);
+
 int main(int argc, char **argv)
 {
     int key_len = 0;
@@ -30,8 +33,7 @@ int main(int argc, char **argv)
         printf("Error: Only %d argument entered! 3 or more are needed!\n", argc);
         usage(); exit(EXIT_FAILURE);
     }
-    
-    while(argv[1][++key_len] != '\0'){}
+    key_len = strlen(argv[1]);
     printf("    key_len = %d\n", key_len);
     if (key_len > 2)
     {
@@ -114,19 +116,20 @@ int print_table (int argc, char **argv, int tv)
 {
     int fd = open(argv[2], O_RDONLY);
     struct ar_hdr header;
-    char ar_mag_str[SARMAG];
+    char arMagStr[SARMAG];
     int len_read = 0;
     
     if (fd == -1)
         arc_read_error(argv[2]);
     
     while (len_read < SARMAG){
-        len_read += read(fd, ar_mag_str+len_read, SARMAG-len_read);
+        len_read += read(fd, arMagStr+len_read, SARMAG-len_read);
         if (len_read==-1)
-            perror("    Error: print_table(): read failure");
+            perror("    Error: print_table(): read failure\n");
         exit(EXIT_FAILURE);
     }
-    check_ar_type(char *ar_mag_str);
+    if(strcmp(arMagStr, ARMAG) != 0)
+        printf('    Error: print_table(): not an archive file\n');
     
     
     return(0);
@@ -168,4 +171,9 @@ void arc_read_error(char *arc)
 {
     printf("    Error: \"%s\": No such file or directory\n", arc);
     exit(EXIT_FAILURE);
+}
+
+void check_ar_type(char *mag)
+{
+      
 }
