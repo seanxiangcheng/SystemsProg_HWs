@@ -15,6 +15,7 @@
 #include <fcntl.h>
 #include <string.h>
 #include <time.h>
+#include <utime.h>
 
 
 #define MAX_FILE_NAME 16
@@ -62,11 +63,10 @@ int main(int argc, char **argv)
         case 'x':
             if ( key_len == 1){
                 extract_files(argc, argv, 0);
-                printf("  key 'x' passed\n");
             }
             else if (argv[1][1] == 'o'){
                 extract_files(argc, argv, 1);
-                printf("  key \"xo\" passed\n");
+                //printf("  key \"xo\" passed\n");
             }
             else
                 wrong_key(argv[1]);
@@ -119,7 +119,11 @@ int extract_files (int argc, char **argv, int xo)
     int fd = open(argv[2], O_RDONLY);
     int fdnew, mode, fsize, read_len = 0, offset=0;
     int fnum_left = argc - 3;
-    short ex_flag = 0, j; 
+    short ex_flag = 0, j, file_x_flag[fnum_left]; 
+    struct stat statbuf;
+    struct utimbuf newt;
+    for(j=0; j<fnum_left; j++) file_x_flag[j]=0; 
+    
     if (fd == -1)
         arc_read_error(argv[2]);
     lseek(fd, 0, SEEK_SET);
@@ -127,7 +131,7 @@ int extract_files (int argc, char **argv, int xo)
     check_mag_str(arMagStr, len_read);
     lseek(fd, SARMAG, SEEK_SET);
 
-    while ( read(fd, (char *) &myheader, HDR_LEN )==HDR_LEN \
+    while ( read(fd, (char *) &myheader, HDR_LEN )==HDR_LEN 
             && (fnum_left > 0 || argc==3) ){
         if(strncmp(myheader.ar_fmag, ARFMAG, 2) != 0){
             printf("  Error: print_table(): wrong header!\n");
@@ -138,18 +142,21 @@ int extract_files (int argc, char **argv, int xo)
         if(argc==3)
             ex_flag = 1;
         else{
-            for (j = 0; j < fnum_left; j++ )
+            for (j = 0; j < argc-3; j++ )
             {
-                if(strcmp(myheader.ar_name, argv[argc-fnum_left+j])==0)
+                if(strcmp(myheader.ar_name, argv[3+j])==0)
                 {
-                    ex_flag = 1;
+                    if( file_x_flag[j]==0 ){
+                        ex_flag = 1;
+                        file_x_flag[j]=1;
+                    }
                     break;
                 }
             }
         }
         fsize = atoi(myheader.ar_size);
         offset = fsize % 2;
-        if(ex_flag==1 && xo==0){ // 'x': extract named file
+        if(ex_flag==1){ // 'x': extract named file
             sscanf(myheader.ar_mode, "%o", &mode);
             fdnew = creat(myheader.ar_name, mode);
             if (fdnew == -1) {
@@ -161,19 +168,35 @@ int extract_files (int argc, char **argv, int xo)
                 read_len = read(fd, buf, fsize);
                 write(fdnew, buf, read_len);
                 fsize -= read_len;
-                free(buf);
             }
             close(fdnew);
+            //printf("  file: %s extracted\n", myheader.ar_name);
             lseek(fd, offset, SEEK_CUR);
-        }
-        else if(ex_flag==1 && xo==1){
-            
+            fnum_left--;
         }
         else if(ex_flag==0){
             lseek(fd, fsize+offset, SEEK_CUR);
         }
-        
+        if(xo==1 && ex_flag==1){
+            if( stat(myheader.ar_name, &statbuf)==-1 ){
+                perror("  Error: extract(): stat()\n");
+                exit(EXIT_FAILURE);
+            }
+            time_t modtime = atoi(myheader.ar_date); 
+            newt.actime = modtime;
+            newt.modtime= modtime;
+            if (utime(myheader.ar_name, &newt) == -1) {
+                perror("  Error: extract(): utime()");
+                exit(1);
+            }
+        }
     }
+    for(j=0; j<argc-3; j++){
+        if(file_x_flag[j]==0){
+            printf("  no entry \"%s\" in archive!\n", argv[j+3]);
+        }
+    }
+    
     return(0);
 }
 

@@ -38,6 +38,9 @@ int main (int argc, char **argv)
     lseek(fd, 0, SEEK_SET);
     printf("read: %d \n", (int)read(fd, s, sizeof(s)));
     printf("%s \n", s);
-    d_printc(s, 4);
+    d_printc(s, 3);
+    int b=0;
+    int a[b];
+    printf(" %d %d %d \n", a[0], a[1], a[2]);
     return(0);
 }
