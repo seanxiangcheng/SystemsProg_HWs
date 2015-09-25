@@ -117,7 +117,9 @@ int extract_files (int argc, char **argv, int xo)
     char arMagStr[SARMAG];
     int len_read = 0;
     int fd = open(argv[2], O_RDONLY);
-    
+    int fdnew, mode, fsize, read_len = 0, offset=0;
+    int fnum_left = argc - 3;
+    short ex_flag = 0, j; 
     if (fd == -1)
         arc_read_error(argv[2]);
     lseek(fd, 0, SEEK_SET);
@@ -125,6 +127,53 @@ int extract_files (int argc, char **argv, int xo)
     check_mag_str(arMagStr, len_read);
     lseek(fd, SARMAG, SEEK_SET);
 
+    while ( read(fd, (char *) &myheader, HDR_LEN )==HDR_LEN \
+            && (fnum_left > 0 || argc==3) ){
+        if(strncmp(myheader.ar_fmag, ARFMAG, 2) != 0){
+            printf("  Error: print_table(): wrong header!\n");
+            exit(EXIT_FAILURE);
+        }
+        fname2str(myheader.ar_name);
+        ex_flag = 0;
+        if(argc==3)
+            ex_flag = 1;
+        else{
+            for (j = 0; j < fnum_left; j++ )
+            {
+                if(strcmp(myheader.ar_name, argv[argc-fnum_left+j])==0)
+                {
+                    ex_flag = 1;
+                    break;
+                }
+            }
+        }
+        fsize = atoi(myheader.ar_size);
+        offset = fsize % 2;
+        if(ex_flag==1 && xo==0){ // 'x': extract named file
+            sscanf(myheader.ar_mode, "%o", &mode);
+            fdnew = creat(myheader.ar_name, mode);
+            if (fdnew == -1) {
+                printf("  Error: extract(): cannot create new files!\n");
+                exit(EXIT_FAILURE);
+            } 
+            while(fsize > 0){
+                char buf[fsize];
+                read_len = read(fd, buf, fsize);
+                write(fdnew, buf, read_len);
+                fsize -= read_len;
+                free(buf);
+            }
+            close(fdnew);
+            lseek(fd, offset, SEEK_CUR);
+        }
+        else if(ex_flag==1 && xo==1){
+            
+        }
+        else if(ex_flag==0){
+            lseek(fd, fsize+offset, SEEK_CUR);
+        }
+        
+    }
     return(0);
 }
 
@@ -146,7 +195,7 @@ int print_table (int argc, char **argv, int tv)
     len_read = read(fd, arMagStr, SARMAG);
     check_mag_str(arMagStr, len_read);
     lseek(fd, SARMAG, SEEK_SET);
-    while ( read(fd, (char *) &myheader, HDR_LEN ) == HDR_LEN){
+    while ( read(fd, (char *) &myheader, HDR_LEN ) == HDR_LEN ){
         if(strncmp(myheader.ar_fmag, ARFMAG, 2) != 0){
             printf("  Error: print_table(): wrong header!\n");
             exit(EXIT_FAILURE);
