@@ -14,6 +14,11 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <string.h>
+#include <time.h>
+
+
+#define MAX_FILE_NAME 16
+#define HDR_LEN 60
 
 int append_files (int argc, char **argv);// 'q': quickly append named files to archive
 int extract_files (int argc, char **argv, int xo);// 'x' : extract named files; 'xo': extract named files restoring mtime
@@ -24,20 +29,23 @@ void usage();
 void wrong_key(char *arg);
 void arc_access_error(char *arc);
 void arc_read_error(char *arc);
-void check_ar_type(char *mag);
+int fname2str(char *fname);
+void print_mode(int mode);
+void d_printc(char *s, int l);//del
+void check_mag_str(char *arMagStr, int len_read);
 
 int main(int argc, char **argv)
 {
     int key_len = 0;
     if ( argc < 3){
-        printf("Error: Only %d argument entered! 3 or more are needed!\n", argc);
+        printf("  Error: Only %d argument entered! 3 or more are needed!\n", argc);
         usage(); exit(EXIT_FAILURE);
     }
     key_len = strlen(argv[1]);
-    printf("    key_len = %d\n", key_len);
+    //printf("    key_len = %d\n", key_len); //del
     if (key_len > 2)
     {
-        printf("    Error: key \"%s\" not available in command myar!\n", argv[1]);
+        printf("  Error: key \"%s\" not available in command myar!\n", argv[1]);
         usage();
         exit(EXIT_FAILURE);
     }
@@ -46,7 +54,7 @@ int main(int argc, char **argv)
         case 'q':
             if(key_len==1){
                 append_files(argc, argv);
-                printf("    key 'q' passed\n");
+                printf("  key 'q' passed\n");
             }
             else
                 wrong_key(argv[1]);
@@ -54,11 +62,11 @@ int main(int argc, char **argv)
         case 'x':
             if ( key_len == 1){
                 extract_files(argc, argv, 0);
-                printf("    key 'x' passed\n");
+                printf("  key 'x' passed\n");
             }
             else if (argv[1][1] == 'o'){
                 extract_files(argc, argv, 1);
-                printf("    key \"xo\" passed\n");
+                printf("  key \"xo\" passed\n");
             }
             else
                 wrong_key(argv[1]);
@@ -66,11 +74,9 @@ int main(int argc, char **argv)
         case 't':
             if ( key_len == 1){
                 print_table(argc, argv, 0);
-                printf("    key 't' passed\n");
             }
             else if (argv[1][1] == 'v'){
-                extract_files(argc, argv, 1);
-                printf("    key \"tv\" passed\n");
+                print_table(argc, argv, 1);
             }
             else
                 wrong_key(argv[1]);
@@ -78,7 +84,7 @@ int main(int argc, char **argv)
         case 'd':
             if(key_len == 1){
                 delete_files(argc, argv);
-                printf("    key 'd' passed\n");
+                printf("  key 'd' passed\n");
             }
             else
                 wrong_key(argv[1]);
@@ -86,7 +92,7 @@ int main(int argc, char **argv)
         case 'A':
             if(key_len == 1) {
                 append_dir(argc, argv);
-                printf("    key 'A' passed\n");
+                printf("  key 'A' passed\n");
             }
             else
                 wrong_key(argv[1]);
@@ -107,30 +113,71 @@ int append_files (int argc, char **argv)
 // 'x' : extract named files; 'xo': extract named files restoring mtime
 int extract_files (int argc, char **argv, int xo)
 {
-    return(0);
-}
-
-// 't' : print a concise table of contents of the archive
-// 'tv': print a verbose table of contents of the archive
-int print_table (int argc, char **argv, int tv)
-{
-    int fd = open(argv[2], O_RDONLY);
-    struct ar_hdr header;
+    struct ar_hdr myheader;
     char arMagStr[SARMAG];
     int len_read = 0;
+    int fd = open(argv[2], O_RDONLY);
     
     if (fd == -1)
         arc_read_error(argv[2]);
+    lseek(fd, 0, SEEK_SET);
+    len_read = read(fd, arMagStr, SARMAG);
+    check_mag_str(arMagStr, len_read);
+    lseek(fd, SARMAG, SEEK_SET);
+
+    return(0);
+}
+
+// 't'/'tv' : print a concise/verbose table of contents of the archive
+int print_table (int argc, char **argv, int tv)
+{ // add ./myar t arc one two nofile
     
-    while (len_read < SARMAG){
-        len_read += read(fd, arMagStr+len_read, SARMAG-len_read);
-        if (len_read==-1)
-            perror("    Error: print_table(): read failure\n");
-        exit(EXIT_FAILURE);
+    struct ar_hdr myheader;
+    char arMagStr[SARMAG];
+    int len_read = 0;
+    int fd = open(argv[2], O_RDONLY);
+    time_t fdate;
+    int fuid, fgid, fmode, fsize;     
+    struct tm * ftime;
+    char fdatetime[30];
+    if (fd == -1)
+        arc_read_error(argv[2]);
+    lseek(fd, 0, SEEK_SET);
+    len_read = read(fd, arMagStr, SARMAG);
+    check_mag_str(arMagStr, len_read);
+    lseek(fd, SARMAG, SEEK_SET);
+    while ( read(fd, (char *) &myheader, HDR_LEN ) == HDR_LEN){
+        if(strncmp(myheader.ar_fmag, ARFMAG, 2) != 0){
+            printf("  Error: print_table(): wrong header!\n");
+            exit(EXIT_FAILURE);
+        }
+        else{ //    int fdate,fuid, fgid, fmode, fsize;   
+            fname2str(myheader.ar_name);  // convert name to a str; replace '\' with '\0'
+            if(tv == 0){
+                printf("  %s\n", myheader.ar_name);
+                sscanf(myheader.ar_size, "%d", &fsize);
+
+            }
+            else{
+                fdate = atoi(myheader.ar_date);
+                sscanf(myheader.ar_uid,  "%d", &fuid);
+                sscanf(myheader.ar_gid,  "%d", &fgid);
+                sscanf(myheader.ar_mode, "%o", &fmode);
+                sscanf(myheader.ar_size, "%d", &fsize);
+                ftime = localtime(&fdate);
+                strftime(fdatetime, 30, "%b %d %R %Y", ftime);
+                printf("  ");
+                print_mode(fmode);
+                printf(" %-d/%-d %6d %s %s\n", fuid, fgid, fsize, fdatetime, myheader.ar_name);
+            }
+        }
+        //printf("    ar_size: %s\n", myheader.ar_size); //del
+        //fsize = atoi(myheader.ar_size);
+        fsize += (fsize%2);
+        //printf("    fsize : %d\n", fsize); //del
+        lseek(fd, fsize, SEEK_CUR);
     }
-    if(strcmp(arMagStr, ARMAG) != 0)
-        printf('    Error: print_table(): not an archive file\n');
-    
+
     
     return(0);
 }
@@ -149,31 +196,77 @@ int append_dir (int argc, char **argv)
 
 void usage()
 {
-    printf("    Usage: ./myar key archive-file file...\n");
-    printf("    keys/commands\n");
-    printf("      q : quickly append named files to archive\n");
-    printf("      x : extract named files\n");
-    printf("      xo: extract named files restoring mtime\n");
-    printf("      t : print a concise table of contents of the archive\n");
-    printf("      tv: print a verbose table of contents of the archive\n");
-    printf("      d : delete named files from archive\n");
-    printf("      A : quickly append all \"regular\" files in the current directory\n");
+    printf("  Usage: ./myar key archive-file file...\n");
+    printf("  keys/commands\n");
+    printf("    q : quickly append named files to archive\n");
+    printf("    x : extract named files\n");
+    printf("    xo: extract named files restoring mtime\n");
+    printf("    t : print a concise table of contents of the archive\n");
+    printf("    tv: print a verbose table of contents of the archive\n");
+    printf("    d : delete named files from archive\n");
+    printf("    A : quickly append all \"regular\" files in the current directory\n");
 }
 
 void wrong_key(char *arg)
 {
-    printf("    Error: key \"%s\" not available in command myar!\n", arg);
+    printf("  Error: key \"%s\" not available in command myar!\n", arg);
     usage();
     exit(EXIT_FAILURE);  
 }
 
 void arc_read_error(char *arc)
 {
-    printf("    Error: \"%s\": No such file or directory\n", arc);
+    printf("  Error: \"%s\": No such file or directory\n", arc);
     exit(EXIT_FAILURE);
 }
 
-void check_ar_type(char *mag)
+int fname2str(char *fname)
 {
-      
+    int i = 0;
+    while( i < MAX_FILE_NAME){
+        if(fname[i] == '/'){
+            fname[i] = '\0';
+            return(0);
+        }
+        i++;
+    }
+    return(1);
+}
+
+void print_mode(int fmode)
+{
+    printf( ( fmode & S_IRUSR ) ? "r" : "-");
+    printf( ( fmode & S_IWUSR ) ? "w" : "-");
+    printf( ( fmode & S_IXUSR ) ? "x" : "-");
+    printf( ( fmode & S_IRGRP ) ? "r" : "-");
+    printf( ( fmode & S_IWGRP ) ? "w" : "-");
+    printf( ( fmode & S_IXGRP ) ? "x" : "-");
+    printf( ( fmode & S_IROTH ) ? "r" : "-");
+    printf( ( fmode & S_IWOTH ) ? "w" : "-");
+    printf( ( fmode & S_IXOTH ) ? "x" : "-");
+}
+  
+void check_mag_str(char *arMagStr, int len_read){
+    while (len_read < SARMAG){
+        printf("  Error: print_table(): read failure OR not an archive file!\n");
+        exit(EXIT_FAILURE);
+    }
+    if(strncmp(arMagStr, ARMAG, SARMAG) != 0)
+    {
+        printf("  Error: print_table(): not an archive file\n  File 'magic' string: ");
+        d_printc(arMagStr, SARMAG);
+        printf("\n");
+        exit(EXIT_FAILURE);
+    }
+}
+
+void d_printc(char *s, int l)
+{
+    int i=0;
+    for (i = 0; i < l; i++)
+    {
+        printf("%c", s[i]);
+    }
+    printf("\n");
+    
 }
