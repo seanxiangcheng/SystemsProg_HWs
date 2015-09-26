@@ -85,7 +85,7 @@ int main(int argc, char **argv)
         case 'd':
             if(key_len == 1){
                 delete_files(argc, argv);
-                printf("  key 'd' passed\n");
+                //printf("  key 'd' passed\n");
             }
             else
                 wrong_key(argv[1]);
@@ -282,7 +282,8 @@ int delete_files (int argc, char **argv)
         perror("  Error: delete(): stat()\n");
         exit(EXIT_FAILURE);
     }
-    fdnew = creat("arc2", statbuf.st_mode);
+    unlink(argv[2]);
+    fdnew = creat(argv[2], statbuf.st_mode);
     if (fdnew == -1) {
         printf("  Error: delete(): cannot create new files!\n");
         exit(EXIT_FAILURE);
@@ -317,7 +318,7 @@ int delete_files (int argc, char **argv)
                 write(fdnew, buf, read_len);
                 fsize -= read_len;
             }
-            printf("  file: %s transfered\n", fname);
+            //printf("  file: %s transfered\n", fname); //del
         }
         else{
             lseek(fd, fsize, SEEK_CUR);
