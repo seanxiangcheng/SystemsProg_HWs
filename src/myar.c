@@ -32,6 +32,7 @@ void arc_access_error(char *arc);
 void arc_read_error(char *arc);
 int fname2str(char *fname);
 void print_mode(int mode);
+int fnamecpy(char *fname, char *fnew);
 void d_printc(char *s, int l);//del
 void check_mag_str(char *arMagStr, int len_read);
 
@@ -134,7 +135,7 @@ int extract_files (int argc, char **argv, int xo)
     while ( read(fd, (char *) &myheader, HDR_LEN )==HDR_LEN 
             && (fnum_left > 0 || argc==3) ){
         if(strncmp(myheader.ar_fmag, ARFMAG, 2) != 0){
-            printf("  Error: print_table(): wrong header!\n");
+            printf("  Error: extract(): wrong header!\n");
             exit(EXIT_FAILURE);
         }
         fname2str(myheader.ar_name);
@@ -203,7 +204,6 @@ int extract_files (int argc, char **argv, int xo)
 // 't'/'tv' : print a concise/verbose table of contents of the archive
 int print_table (int argc, char **argv, int tv)
 { // add ./myar t arc one two nofile
-    
     struct ar_hdr myheader;
     char arMagStr[SARMAG];
     int len_read = 0;
@@ -257,6 +257,94 @@ int print_table (int argc, char **argv, int tv)
 // 'd' : delete named files from archive
 int delete_files (int argc, char **argv)
 {
+    if(argc<4){
+        printf("  No files specified to delete.\n");
+        exit(EXIT_SUCCESS);
+    }
+    struct ar_hdr myheader;
+    char arMagStr[SARMAG], fname[MAX_FILE_NAME];
+    int len_read = 0;
+    int fd = open(argv[2], O_RDONLY);
+    int fdnew, fsize, read_len = 0, offset=0;
+    int fnum_left = argc - 3;
+    short ex_flag = 0, j, file_x_flag[fnum_left]; 
+    struct stat statbuf;
+    //struct utimbuf newt;
+    for(j=0; j<fnum_left; j++) file_x_flag[j]=0; 
+    
+    if (fd == -1)
+        arc_read_error(argv[2]);
+    lseek(fd, 0, SEEK_SET);
+    len_read = read(fd, arMagStr, SARMAG);
+    check_mag_str(arMagStr, len_read);
+    lseek(fd, SARMAG, SEEK_SET);
+    if( stat(argv[2], &statbuf)==-1 ){
+        perror("  Error: delete(): stat()\n");
+        exit(EXIT_FAILURE);
+    }
+    fdnew = creat("arc2", statbuf.st_mode);
+    if (fdnew == -1) {
+        printf("  Error: delete(): cannot create new files!\n");
+        exit(EXIT_FAILURE);
+    }
+    write(fdnew, arMagStr, SARMAG);
+    
+    while ( read(fd, (char *) &myheader, HDR_LEN )==HDR_LEN ) {
+        if(strncmp(myheader.ar_fmag, ARFMAG, 2) != 0){
+            printf("  Error: delete(): wrong header!\n");
+            exit(EXIT_FAILURE);
+        }
+        fnamecpy(myheader.ar_name, fname);
+        ex_flag = 1;
+        for (j = 0; j < argc-3; j++ ) {
+            if(strcmp(fname, argv[3+j])==0){
+                if( file_x_flag[j]==0 ){
+                    ex_flag = 0;
+                    file_x_flag[j]=1;
+                    fnum_left--;
+                    break;
+                }
+            }
+        }
+        fsize = atoi(myheader.ar_size);
+        offset = fsize % 2;
+        fsize += offset; 
+        if( ex_flag==1 ){ 
+            write(fdnew, (char *) &myheader, HDR_LEN);
+            while(fsize > 0){
+                char buf[fsize];
+                read_len = read(fd, buf, fsize);
+                write(fdnew, buf, read_len);
+                fsize -= read_len;
+            }
+            printf("  file: %s transfered\n", fname);
+        }
+        else{
+            lseek(fd, fsize, SEEK_CUR);
+        }
+    }
+    close(fdnew);
+    close(fd);
+    for(j=0; j<argc-3; j++){
+        if(file_x_flag[j]==0){
+            printf("  no entry \"%s\" in archive!\n", argv[j+3]);
+        }
+    }
+    /*
+            if( ex_flag==1){
+            if( stat(myheader.ar_name, &statbuf)==-1 ){
+                perror("  Error: extract(): stat()\n");
+                exit(EXIT_FAILURE);
+            }
+            time_t modtime = atoi(myheader.ar_date); 
+            newt.actime = modtime;
+            newt.modtime= modtime;
+            if (utime(myheader.ar_name, &newt) == -1) {
+                perror("  Error: extract(): utime()");
+                exit(1);
+            }
+        } 
+    */
     return(0);
 }
 
@@ -299,6 +387,23 @@ int fname2str(char *fname)
         if(fname[i] == '/'){
             fname[i] = '\0';
             return(0);
+        }
+        i++;
+    }
+    return(1);
+}
+
+
+int fnamecpy(char *fname, char *fnew)
+{
+    int i = 0;
+    while( i < MAX_FILE_NAME){
+        if(fname[i] == '/'){
+            fnew[i] = '\0';
+            return(0);
+        }
+        else{
+            fnew[i] = fname[i];
         }
         i++;
     }
