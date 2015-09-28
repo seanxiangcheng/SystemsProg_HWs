@@ -16,10 +16,11 @@
 #include <string.h>
 #include <time.h>
 #include <utime.h>
-
+#include <dirent.h>
 
 #define MAX_FILE_NAME 16
 #define HDR_LEN 60
+#define BLOCK_SIZE 4096
 
 int append_files (int argc, char **argv);// 'q': quickly append named files to archive
 int extract_files (int argc, char **argv, int xo);// 'x' : extract named files; 'xo': extract named files restoring mtime
@@ -35,6 +36,9 @@ void print_mode(int mode);
 int fnamecpy(char *fname, char *fnew);
 void d_printc(char *s, int l);//del
 void check_mag_str(char *arMagStr, int len_read);
+int add_file2ar(int fd_ar, int fdnew, char *fname, struct stat statbuf);
+
+
 
 int main(int argc, char **argv)
 {
@@ -56,7 +60,7 @@ int main(int argc, char **argv)
         case 'q':
             if(key_len==1){
                 append_files(argc, argv);
-                printf("  key 'q' passed\n");
+                //printf("  key 'q' passed\n");
             }
             else
                 wrong_key(argv[1]);
@@ -93,7 +97,7 @@ int main(int argc, char **argv)
         case 'A':
             if(key_len == 1) {
                 append_dir(argc, argv);
-                printf("  key 'A' passed\n");
+                //printf("  key 'A' passed\n");
             }
             else
                 wrong_key(argv[1]);
@@ -108,6 +112,132 @@ int main(int argc, char **argv)
 // 'q': quickly append named files to archive
 int append_files (int argc, char **argv)
 {
+    char arMagStr[SARMAG];
+    int len_read = 0;
+    int fd = open(argv[2], O_RDWR | O_CREAT | O_APPEND, 0666);
+    int fd2;
+    short i; 
+    struct stat statbuf;
+    if (fd == -1)
+        arc_read_error(argv[2]);
+    umask(0);
+    lseek(fd, 0, SEEK_SET);
+    len_read = read(fd, arMagStr, SARMAG);
+    lseek(fd, 0, SEEK_SET);
+    if (len_read < 0) {
+        printf("myar: %s: Error while reading the file.\n", argv[2]);
+        exit(EXIT_FAILURE);
+    } 
+    else if (len_read > 0)
+        check_mag_str(arMagStr, len_read);
+    else
+        write(fd, ARMAG, SARMAG);
+    lseek(fd, SARMAG, SEEK_SET);
+    if(argc==3){
+        printf("  Info: no files specified to append.\n");
+        printf("  myar: creating arc.\n");
+
+        close(fd);
+        exit(EXIT_SUCCESS);
+    }
+    i = 3;
+    while( i < argc){
+        char *fname = argv[i];
+        fd2 = open(fname, O_RDONLY);
+        if (fd2 < 0) {
+            printf("  myar: %s : No such file or directory\n", fname);
+            printf("  For safety, no files after it are archived!\n");
+            exit(EXIT_FAILURE);
+            close(fd);
+            close(fd2);
+        }
+        if( stat(fname, &statbuf)==-1 ) {
+            printf("  Error: append(): stat() failed!\n");
+            exit(EXIT_FAILURE);
+        }
+        if((statbuf.st_mode & S_IFMT)==S_IFREG){
+            /* Handle regular file */
+            lseek(fd2, 0, SEEK_SET);
+        }
+        else if((statbuf.st_mode & S_IFMT)==S_IFLNK){
+            /* Handle symbolic link */
+            lseek(fd2, 0, SEEK_SET);
+        }
+        else{ /* Error */
+            printf( "  myar: %s: Not a regular or symbolic file.\n", fname);
+            exit(EXIT_FAILURE);
+            close(fd);
+            close(fd2);
+        }
+        add_file2ar(fd, fd2, fname, statbuf);
+        close(fd2);
+        i++;
+    }
+    close(fd);
+    return(0);
+}
+
+int add_file2ar(int fd, int fd2, char *fname, struct stat statbuf){
+    struct ar_hdr myhdr;
+    int len_read=0, lw=0, lr=0;
+    char buf[BLOCK_SIZE];
+
+    sprintf(myhdr.ar_name, "%-16.16s", fname);
+	sprintf(myhdr.ar_date, "%-12u", (unsigned int)statbuf.st_mtime);
+	sprintf(myhdr.ar_uid,  "%-6u",  statbuf.st_uid);
+	sprintf(myhdr.ar_gid,  "%-6u",  statbuf.st_gid);
+	sprintf(myhdr.ar_mode, "%-8o",  statbuf.st_mode);
+    sprintf(myhdr.ar_size, "%-10u", (unsigned int)statbuf.st_size);
+	sprintf(myhdr.ar_fmag, "%s", ARFMAG);
+
+    myhdr.ar_name[strlen(fname)] = '/';
+    
+        
+    if( (write(fd, (char *)&myhdr, HDR_LEN))==-1 ){
+        perror(" Error: append(): add_file2ar(): write()-1: unable to write to ar file.\n");
+        close(fd);
+        close(fd2);
+        exit(EXIT_FAILURE);
+    }
+    // if it is a symbolic link, only for append_dir
+    if(fd2==-2){
+        //printf("  There is a link %s:", fname);
+        if ((lr = readlink(fname, buf, sizeof(buf)-1)) == -1)
+        {
+            printf(" Error: append_dir(): readlink(): read link failed!\n");
+            exit(EXIT_FAILURE);
+        }
+        lw = write(fd, buf, lr);
+        if(lw % 2 == 1){
+            if(write(fd, "\n", 1)==-1){
+                perror("  Error: append(): add_file2ar()-3: writing file");
+                close(fd);
+                exit(EXIT_FAILURE);
+            }
+        }
+        return(0);
+    }
+    
+    while (len_read < statbuf.st_size) {
+        lr = read(fd2, buf, BLOCK_SIZE);
+        lw = write(fd, buf, lr);
+        if (lr != lw) {
+            perror("  Error: append(): add_file2ar()-2: writing file");
+            close(fd);
+            close(fd2);
+            exit(EXIT_FAILURE);
+        }
+        len_read += lr;
+    }
+    if(len_read % 2 == 1){
+        if(write(fd, "\n", 1)==-1){
+            perror("  Error: append(): add_file2ar()-3: writing file");
+            close(fd);
+            close(fd2);
+            exit(EXIT_FAILURE);
+        }
+    }
+    
     return(0);
 }
 
@@ -150,8 +280,8 @@ int extract_files (int argc, char **argv, int xo)
                     if( file_x_flag[j]==0 ){
                         ex_flag = 1;
                         file_x_flag[j]=1;
+                        break;
                     }
-                    break;
                 }
             }
         }
@@ -331,29 +461,90 @@ int delete_files (int argc, char **argv)
             printf("  no entry \"%s\" in archive!\n", argv[j+3]);
         }
     }
-    /*
-            if( ex_flag==1){
-            if( stat(myheader.ar_name, &statbuf)==-1 ){
-                perror("  Error: extract(): stat()\n");
-                exit(EXIT_FAILURE);
-            }
-            time_t modtime = atoi(myheader.ar_date); 
-            newt.actime = modtime;
-            newt.modtime= modtime;
-            if (utime(myheader.ar_name, &newt) == -1) {
-                perror("  Error: extract(): utime()");
-                exit(1);
-            }
-        } 
-    */
+    
     return(0);
 }
 
 // 'A' : quickly append all 'regular' files in the current directory
 int append_dir (int argc, char **argv)
 {
+    DIR *dirp;
+    struct dirent *dp;
+    if ((dirp = opendir(".")) == NULL) {
+        perror(" Error: append_dir(): couldn't open current directory '.'\n");
+        exit(EXIT_FAILURE);
+    }
+    
+    char arMagStr[SARMAG];
+    int len_read = 0;
+    int fd = open(argv[2], O_RDWR | O_CREAT | O_APPEND, 0666);
+    int fd2;
+    struct stat statbuf;
+    if (fd == -1)
+        arc_read_error(argv[2]);
+    umask(S_IWGRP | S_IWOTH);
+    lseek(fd, 0, SEEK_SET);
+    len_read = read(fd, arMagStr, SARMAG);
+    lseek(fd, 0, SEEK_SET);
+    if (len_read < 0) {
+        printf("  myar: %s: Error while reading the file.\n", argv[2]);
+        exit(EXIT_FAILURE);
+    } 
+    else if (len_read > 0)
+        check_mag_str(arMagStr, len_read);
+    else
+        write(fd, ARMAG, SARMAG);
+    lseek(fd, SARMAG, SEEK_SET);
+    if(argc>3){
+        printf("  Info: key 'A' will append all files in current directory\n"
+               "        to archive. Files after '%s' are omitted!\n", argv[2]);
+        close(fd);
+        exit(EXIT_SUCCESS);
+    }
+    do {
+        if ((dp = readdir(dirp)) != NULL) {
+            if( strcmp(dp->d_name, ".") != 0 && 
+                strcmp(dp->d_name, "..")!=0  &&
+                strcmp(dp->d_name, argv[2]) != 0){
+                
+                char *fname = dp->d_name;
+                fd2 = open(fname, O_RDONLY);
+                if (fd2 < 0) {
+                    printf("  myar: %s : No such file or directory\n", fname);
+                    printf("  For safety, no files after it are archived!\n");
+                    exit(EXIT_FAILURE);
+                    close(fd);
+                    close(fd2);
+                }
+                if( stat(fname, &statbuf)==-1 ) {
+                    printf("  Error: append_dir(): stat() failed!\n");
+                    exit(EXIT_FAILURE);
+                }
+                if((statbuf.st_mode & S_IFMT)==S_IFLNK || S_ISLNK(statbuf.st_mode)){
+                    /* Handle symbolic link */
+                    close(fd2);
+                    fd2 = -2; // -2 is my self-defined flag for symmbolic link 
+                    lstat(fname, &statbuf);
+                    printf(" Link file: %s\n", fname);
+                    add_file2ar(fd, fd2, fname, statbuf);
+                }
+                else if((statbuf.st_mode & S_IFMT)==S_IFREG){
+                    /* Handle regular file */
+                    lseek(fd2, 0, SEEK_SET);
+                    add_file2ar(fd, fd2, fname, statbuf);
+                }
+                else{ /* Error */
+                    printf( "  myar: '%s' omitted : Not a regular or symbolic file.\n", fname);
+                }
+                close(fd2);
+            }
+        }
+    } while (dp != NULL);
+    
+    (void) closedir(dirp);
     return(0);
 }
+
 
 void usage()
 {
@@ -425,15 +616,13 @@ void print_mode(int fmode)
 }
   
 void check_mag_str(char *arMagStr, int len_read){
-    while (len_read < SARMAG){
-        printf("  Error: print_table(): read failure OR not an archive file!\n");
-        exit(EXIT_FAILURE);
+    if (len_read < SARMAG){
+        printf("  Error: Magic string: read failure OR not an archive file!\n");
     }
     if(strncmp(arMagStr, ARMAG, SARMAG) != 0)
     {
-        printf("  Error: print_table(): not an archive file\n  File 'magic' string: ");
+        printf("  More Info: not an archive file\n  File 'magic' string: ");
         d_printc(arMagStr, SARMAG);
-        printf("\n");
         exit(EXIT_FAILURE);
     }
 }
