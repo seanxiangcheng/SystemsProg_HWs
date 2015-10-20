@@ -164,55 +164,58 @@ int main(int argc, char **argv){
 
 
 void suppressor(int num, int ins[][2], int outs[][2]){
-					char word[MAX_STR_LEN];
-					char words[num][MAX_STR_LEN];
-					int word_count=0, i, num_emt_ps=0, wd_ind;
-					FILE *p_reads[num];
-					memset(word,'\0', MAX_STR_LEN);
-					memset(words,'\0', MAX_STR_LEN*num);
+    char word[MAX_STR_LEN];
+    char words[num][MAX_STR_LEN];
+    int word_count=0, i, num_emt_ps=0, wd_ind;
+    int line_out = 0;
+    FILE *p_reads[num];
+    memset(word,'\0', MAX_STR_LEN);
+    memset(words,'\0', MAX_STR_LEN*num);
+    for (i=0; i<num; i++) {
+	p_reads[i] = fdopen(outs[i][0], "r");
+	if (fgets(words[i], MAX_STR_LEN, p_reads[i]) == NULL) {
+	    memset(words[i], '\0', MAX_STR_LEN);
+	    num_emt_ps++;
+	}
+	if(strlen(words[i]) < 3) words[i][0] = '\0';
+    }
+    word_count = 0;
+    wd_ind = word2print(num, words);
+    strcpy(word, words[wd_ind]);
+    memset(words[wd_ind], '\0', MAX_STR_LEN);
+    //if(word[strlen(word)-1] == '\n') word[strlen(word)-1] = '\0';
+    ++word_count;
+    printf("+------------------------------------------------+\n");
+    printf("|  num | word                                    |\n");
+    printf("|------|-----------------------------------------|\n");
+    while (num_emt_ps <= num) {
+	if(fgets(words[wd_ind], MAX_STR_LEN, p_reads[wd_ind])==NULL) {
+	    words[wd_ind][0] = '\0'; 
+	    num_emt_ps++;
+	}
+	wd_ind = word2print(num, words);
+	if( (wd_ind != -1) && (strcmp(word, words[wd_ind])==0) ) word_count++;
+	else{
+	    if(word[strlen(word)-1]=='\n') word[strlen(word)-1] = '\0';
+	    if(strlen(word)>2) {
+		printf("|%5d | %-40s|\n", word_count, word);
+		word_count = 0;
+		line_out++;
+	    }
+	    if(num_emt_ps == num){
+		printf("+------------------------------------------------+\n");
+		printf("\n"); 
+	    }
+	    if (wd_ind >= 0) {
+		memset(word,'\0', MAX_STR_LEN);
+		strcpy(word, words[wd_ind]);
+		word_count++;
+	    }
+	}
 
-					for (i=0; i<num; i++) {
-					    p_reads[i] = fdopen(outs[i][0], "r");
-									if (fgets(words[i], MAX_STR_LEN, p_reads[i]) == NULL) {
-													words[i][0] = '\0';
-													num_emt_ps++;
-									}
-									if(strlen(words[i]) < 3) words[i][0] = '\0';
-					}
-					word_count = 0;
-					wd_ind = word2print(num, words);
-					strncpy(word, words[wd_ind], MAX_STR_LEN);
-					if (word[strlen(word)-1] == '\n') word[strlen(word)-1] = '\0';
-					word_count++;
-					printf("+------------------------------------------------+\n");
-					printf("|  num | word                                    |\n");
-					printf("|------|-----------------------------------------|\n");
-					while (num_emt_ps <= num) {
-									if (fgets(words[wd_ind], MAX_STR_LEN, p_reads[wd_ind])==NULL) {
-													words[wd_ind][0] = '\0'; 
-													num_emt_ps++;
-									}
-									wd_ind = word2print(num, words);
-									if( (wd_ind != -1) && (strcmp(word, words[wd_ind])==0) ) word_count++;
-									else{
-												 if(word[strlen(word)-1]=='\n') word[strlen(word)-1] = '\0';
-													if(strlen(word)>2) {
-														    printf("|%5d | %-40s|\n", word_count, word);
-																		word_count = 0;
-													}
-													if(num_emt_ps == num){
-																	printf("+------------------------------------------------+\n");
-																	printf("\n"); 
-													}
-													if (wd_ind >= 0) {
-																	memset(word,'\0', MAX_STR_LEN);
-																	strcpy(word, words[wd_ind]);
-																	word_count++;
-													}
-									}
-					}
-					for(i=0; i<num; i++) fclose(p_reads[i]);
-					_exit(EXIT_SUCCESS); // exit the suppressor process
+    }
+    for(i=0; i<num; i++) fclose(p_reads[i]);
+    _exit(EXIT_SUCCESS); // exit the suppressor process
 }
 
 
