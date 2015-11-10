@@ -35,26 +35,8 @@ static void hdl (int sig, siginfo_t *siginfo, void *context)
  
 int main (int argc, char *argv[])
 {
-	struct sigaction act;
+	int a;
+	printf(" size of integer: %d\n", (a = 5));
  
-	memset (&act, '\0', sizeof(act));
- 
-	/* Use the sa_sigaction field because the handles has two additional parameters */
-	act.sa_sigaction = &hdl;
- 
-	/* The SA_SIGINFO flag tells sigaction() to use the sa_sigaction field, not sa_handler. */
-	act.sa_flags = SA_SIGINFO;
- 
-	if (sigaction(SIGTERM, &act, NULL) < 0) {
-		perror ("sigaction");
-		return 1;
-	}
-    char a[10];
-    strcpy(a, "1234567891");
-    printf("last character: %c\n", a[9]);
-
-    printf("last character: %c\n", a[10]);
-    printf(" %s\n", a);
- 
-	return 0;
+	return(0);
 }
