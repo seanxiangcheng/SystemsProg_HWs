@@ -62,14 +62,14 @@ int main(int argc, char *argv[]) {
 
 	sid = shmget(SHMM_KEY, sizeof(struct Shared_Info_Block), IPC_CREAT | IPC_EXCL | 0666);
 	if (sid == -1) {
-		perror("There can only be one instance of manage!");
+		perror("  manage.c: error shmget!\n");
 		exit(1);
 	}
 	sharedMem = shmat(sid, NULL, 0);
 	memset(sharedMem, 0, sizeof(struct Shared_Info_Block));
 	qid = msgget(MESQ_KEY, IPC_CREAT | IPC_EXCL | 0666);
 	if (qid == -1) {
-		perror("There can only be one instance of manage!");
+		perror("  manage.c: error msgget!\n");
 		exit(1);
 	}
 	struct sigaction signal;
@@ -157,6 +157,3 @@ int main(int argc, char *argv[]) {
 }
 
 
-//memset(sharedMem->proc, 0, sizeof(sharedMem->proc));
-//memset(sharedMem->bitmap, 0, sizeof(sharedMem->bitmap));
-//memset(sharedMem->pnums, 0, sizeof(sharedMem->pnums));
