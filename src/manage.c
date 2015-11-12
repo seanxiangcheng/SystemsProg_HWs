@@ -18,7 +18,7 @@
 #include <unistd.h>
 #include <sys/ipc.h>
 #include <sys/msg.h>
-#include "hw4_header.h"
+#include "hw3_header.h"
 
 int sid; 	// shared memeory id
 int qid;	// messageQ id
