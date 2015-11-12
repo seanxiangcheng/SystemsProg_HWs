@@ -31,18 +31,13 @@ int BitMapReader_Tested(){
 	int bitnum=0;
 	int numTested = 0;
 	for (intnum = 0; intnum < BITMAP_INT_LEN; intnum++) {
-		if (sharedMem->bitmap[intnum] == -1) {
-			numTested += 32;
-		} else {
-			for (bitnum = 0; bitnum < 32; bitnum++) {
-				if ((sharedMem->bitmap[intnum] & (1 << bitnum)) == 1) {
-					numTested++;
-				}
-			}
+		if (sharedMem->bitmap[intnum] == -1) 	numTested += 32;
+		else {
+			for (bitnum = 0; bitnum < 32; bitnum++) 
+				if ((sharedMem->bitmap[intnum] & (1 << bitnum)) == 1) 	numTested++;
 		}
 	}
-	return(numTested);	
-	
+	return(numTested);
 }
 
 int main(int argc, char *argv[]) {
@@ -63,7 +58,7 @@ int main(int argc, char *argv[]) {
 		          Call \"./manage\" first");
 		exit(EXIT_FAILURE);
 	}
-	printf(" * Perfect numbers found:  \n -=============-\n");
+	printf("\n * Perfect numbers found:  \n -=============-\n");
 
 	for(i=0; i<PERFECT_LEN; i++) {
 		number = sharedMem->pnums[i];
@@ -73,10 +68,10 @@ int main(int argc, char *argv[]) {
 		}
 	}
 	printf(" -=============-\n");
-	printf(" * Total integer-numbers tested: %-6d\n", BitMapReader_Tested());
+	printf(" * Total integer numbers tested: %-6d\n", BitMapReader_Tested());
 	printf(" * Total perfect numbers found : %-6d\n", totalFound);
 
-	printf(" -=======================================-\n");
+	printf("\n -=======================================-\n");
 	printf(" |       Current Computing Processes     |\n");
 	printf(" |   pid   | found |  skipped  |  tested |\n");
 	printf(" -=======================================-\n");
@@ -89,9 +84,9 @@ int main(int argc, char *argv[]) {
 	}
 	printf(" -=======================================-\n\n");	
 
-	if (argc >= 2) {
+	if (argc == 2) {
 		if (strcmp(argv[1], "-k") == 0) {
-			printf(" Message: processes of mange and compute are being killed!\n");
+			printf(" Message: processes of mange and compute are being killed!\n\n");
 			msge.msgtype = TP_MANAGE_PID;
 			msge.msg = 0;
 			if (msgsnd(qid, &msge, sizeof(msge.msg), 0) != 0) {
@@ -108,6 +103,11 @@ int main(int argc, char *argv[]) {
 			       usage of report:./report [-k]\n", argv[1]);
 			exit(EXIT_FAILURE);
 		}
+	}
+	else if(argc != 1){
+		printf(" Error: option \"%s\" not recognized!\n \
+		       usage of report:./report [-k]\n", argv[1]);
+		exit(EXIT_FAILURE);
 	}
 	return(0);
 }

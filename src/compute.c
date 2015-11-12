@@ -25,161 +25,109 @@
 int sid; 	// shared memeory id
 int qid;	// messageQ id
 struct Shared_Info_Block *sharedMem;
-int processIndex = -1;
+int proc_ind = -1;
 
-// handler code that zeroes out proc statistics and exits
-void terminate(int signum) {
-
-	if (processIndex == -1) {
-		exit(0);
-	}
-	sharedMem->proc[processIndex].pid = 0;
-	sharedMem->proc[processIndex].numFound = 0;
-	//printf("Total numbers processed: %d\n", sharedMem->proc[processIndex].countTested + sharedMem->proc[processIndex].countSkipped);
-	sharedMem->proc[processIndex].numTested = 0;
-	sharedMem->proc[processIndex].numSkipped = 0;
-
-	exit(0);
+void handler_kill(int signum) {
+	if (proc_ind == -1) exit(EXIT_SUCCESS);
+	sharedMem->proc[proc_ind].pid = 0;
+	sharedMem->proc[proc_ind].numFound = 0;
+	sharedMem->proc[proc_ind].numSkipped = 0;
+	sharedMem->proc[proc_ind].numTested = 0;
+	exit(EXIT_SUCCESS);
 }
 
-int whichInt(int j) {
-	return ((j - 2) / 32);
-}
 
-int whichBit(int j) {
-	return ((j - 2) % 32);
-}
-
-// test if a number is perfect
-int test(int testNumber) {
-	int sumSoFar = 0, sumOfDivisors = 0, i;
-
-	for (i = 1; i < testNumber; i++) {
-		if (testNumber % i == 0) {
-			sumSoFar += i;
-		}
-	}
-	sumOfDivisors = sumSoFar;
-
-	if (sumOfDivisors == testNumber) {
-		return 1;	// perfect
-	} else {
-		return 0;	// not perfect
-	}
-}
-
-// loops through bitmap starting at startNumber
-int compute(int startNumber) {
-	int thisInt, thisBit, testNumber = startNumber;
-	int thisPID, wrappedAround = 0;
-
-	// get and attach shared sharedMem segment and message queue
-	sid = shmget(SHMM_KEY, sizeof(struct Shared_Info_Block), 0);
-	if (sid == -1 ) {
-		perror(" compute.c: Shared memory segment has not been created!");
-		exit(1);
-	}
-	sharedMem = shmat(sid, NULL, 0);
-	if (sharedMem == (void *) -1) {
-		perror(" compute.c: Shared memory segment has not been created!");
-		exit(1);
-	}
-	qid = msgget(MESQ_KEY, 0);
-	if (qid == -1) {
-		perror(" compute.c: Message queue has not been created!");
-		exit(1);
-	}
-
-	// create message that registers compute with manage
+int compute(int num2start) {
 	struct My_Msg message;
-	thisPID = getpid();
+	int num2test;
+	int pidNow, intNow, bitNow;
+	int flag = 0;
+	int i=0, sums=0, flag2 = 0;
+
+	if ((sid = shmget(SHMM_KEY, sizeof(struct Shared_Info_Block), 0)) == -1 ) {
+		perror(" compute.c: Shared memory segment has not been created!");
+		exit(EXIT_FAILURE);
+	}
+	if ((sharedMem = shmat(sid, NULL, 0)) == (void *) -1) {
+		perror(" compute.c: Shared memory segment has not been created!");
+		exit(EXIT_FAILURE);
+	}
+	if ((qid = msgget(MESQ_KEY, 0)) == -1) {
+		perror(" compute.c: Message queue has not been created!");
+		exit(EXIT_FAILURE);
+	}
+
 	message.msgtype = TP_PROC_INDEX;
-	message.msg = thisPID;
+	pidNow = getpid();
+	message.msg = pidNow;
 	if (msgsnd(qid, &message, sizeof(message.msg), 0) != 0) {
-		perror("proc[] index failed");
-		exit(1);
+		perror(" compute.c: compute(): message cannot be send to manage!");
+		exit(EXIT_FAILURE);
 	}
-
-	// waits for response message with proc statistics array index
-	// and verifies that the slot belongs to it
-	msgrcv(qid, &message, sizeof(message.msg), IS_PROC_INDEX, 0);
-	processIndex = message.msg;
-	if (sharedMem->proc[processIndex].pid != thisPID) {
-		perror("pids don't match!");
-		exit(1);
-	}
-
-	// main loop
-	while (1) {
-		if (testNumber > MAX_NUM2TEST) {
-			testNumber = 2;
-			wrappedAround = 1;
+	msgrcv(qid, &message, sizeof(message.msg), IS_PROC_INDEX, 0); // get an process 'id' from manage 
+	proc_ind = message.msg;
+	if (sharedMem->proc[proc_ind].pid != getpid()) exit(EXIT_FAILURE);
+	
+	num2test = num2start-1;
+	while(1){
+		num2test++;
+		if (num2test == num2start && flag == 1)	{handler_kill(SIGQUIT);}
+		if (num2test > MAX_NUM2TEST) {
+			num2test = 2;
+			flag = 1;
 		}
-		if (testNumber == startNumber && wrappedAround == 1) {
-			// we have looped around the entire bitmap
-			terminate(SIGQUIT);
-		}
-
-		// get integer index and bit index of bit that represents testNumber
-		thisInt = whichInt(testNumber);
-		thisBit = whichBit(testNumber);
-
-		// test the number if it has not been tested yet
-		// then set the bit and update proc statistics
-		if ((sharedMem->bitmap[thisInt] & (1 << thisBit)) == 0) {
-			if (test(testNumber)) {
-				// tell manager that testNumber is perfect
+		intNow = (num2test - 2) / 32;
+		bitNow = (num2test - 2) % 32;
+		if ( ( sharedMem->bitmap[intNow] & ((int)1 << bitNow) ) == 0) {
+			sums = 0;
+			flag2 = 0;
+			for (i=1; i<num2test; i++) {
+			    if (num2test % i == 0) {sums += i;}
+			}
+			if (sums == num2test) 	flag2 = 1;
+			if ( flag2 == 1 ) {
+				sharedMem->proc[proc_ind].numFound += 1;
 				message.msgtype = TP_NUM_FOUND_PERFECT;
-				message.msg = testNumber;
+				message.msg = num2test;
 				if (msgsnd(qid, &message, sizeof(message.msg), 0) != 0) {
-					perror("Perfect number send failed");
-					exit(1);
+					perror(" compute.c: compute(): fail to send perfect number to manage!");
+					exit(EXIT_FAILURE);
 				}
-				sharedMem->proc[processIndex].numFound++;
 			} 
-			sharedMem->bitmap[thisInt] |= (1 << thisBit);
-			sharedMem->proc[processIndex].numTested++;
-		} else {
-			sharedMem->proc[processIndex].numSkipped++;
-		}
-		testNumber++;
+			sharedMem->proc[proc_ind].numTested += 1;
+			sharedMem->bitmap[intNow] |= (1 << bitNow);
+		} else 
+			sharedMem->proc[proc_ind].numSkipped += 1;
 	}
 }
 
-// entry point
 int main(int argc, char *argv[]) {
-
-	// validate number of arguments
-	if (argc != 2) {
-		printf("usage: ./compute [start number]\n");
-		exit(0);
-	}
-
-	// validate start number
-	int startNumber = atoi(argv[1]);
-	if (startNumber > 1024001 || startNumber < 2) {
-		printf("Start number x is outside the acceptable range! 2 <= x <= 1,024,001\n");
-		exit(0);
-	}
-
-	// set up signal handler behavior
+	int num2start;
 	struct sigaction signal;
+	if (argc != 2) {
+		printf(" compute.c: main(): wrong argument(s)!\
+		\n usage: ./compute [start number]\n");
+		exit(EXIT_FAILURE);
+	}
+	num2start = atoi(argv[1]);
+	if (num2start > MAX_NUM2TEST || num2start < 2) {
+		printf("Start number x is outside the acceptable range! 2 <= x <= 1,024,000\n");
+		exit(EXIT_FAILURE);
+	}
 	memset(&signal, 0, sizeof(signal));
-	signal.sa_handler = terminate;
+	signal.sa_handler = handler_kill;
 	if (sigaction(SIGINT, &signal, NULL) != 0) {
-		perror("SIGINT set failed");
-		exit(1);
+		perror(" compute.c: main(): failed to sigation SIGINT");
+		exit(EXIT_FAILURE);
 	}
 	if (sigaction(SIGQUIT, &signal, NULL) != 0) {
-		perror("SIGQUIT set failed");
-		exit(1);
+		perror(" compute.c: main(): failed to sigation SIGQUIT");
+		exit(EXIT_FAILURE);
 	}
 	if (sigaction(SIGHUP, &signal, NULL) != 0) {
-		perror("SIGHUP set failed");
-		exit(1);
+		perror(" compute.c: main(): failed to sigation SIGHUP");
+		exit(EXIT_FAILURE);
 	}
-
-	// begin computation at startNumber
-	compute(startNumber);
+	compute(num2start);
 	return(0);
 }

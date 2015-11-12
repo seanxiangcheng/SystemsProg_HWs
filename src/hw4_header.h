@@ -20,8 +20,8 @@
 #include <sys/msg.h>
 
 
-#define MESQ_KEY 55100
-#define SHMM_KEY 55111
+#define MESQ_KEY 5091
+#define SHMM_KEY 3702
 
 #define MAX_NUM2TEST 1024000
 #define BITMAP_INT_LEN  256000 // 1024000/sizeof(int) = 256000
@@ -34,7 +34,8 @@
 #define IS_PROC_INDEX 4
 #define IS_MANAGE_PID 5
 
-extern int sid, qid;
+extern int sid; // shared memory id
+extern int qid; // message Q id
 
 struct My_Msg{
 	long msgtype;	// message type

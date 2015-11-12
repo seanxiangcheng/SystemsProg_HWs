@@ -24,78 +24,54 @@ int sid; 	// shared memeory id
 int qid;	// messageQ id
 struct Shared_Info_Block *sharedMem;
 
-// handler code that terminates running computes
 void handler(int signum) {
-	int pid, i;
-
-	// sends a SIGINT signall to all running computes
+	int i, tmp;
 	for (i = 0; i < PROCESS_LEN; i++) {
-		pid = sharedMem->proc[i].pid;
-		if (pid != 0) {
-			if (kill(pid, SIGINT) != 0) {
-				perror("Kill process failed");
-				exit(1);
+		tmp = (sharedMem->proc[i].pid);
+		if ( tmp != 0) {
+			if (kill(tmp, SIGINT) != 0) {
+				perror(" manage.c: handler(): failed to kill computing process!");
+				exit(EXIT_FAILURE);
 			}
 		}
 	}
-
-	// sleeps 5 seconds, detaches shared memory and marks
-	// shared memory and message queue for deletion, then exits
 	sleep(5);
+	
 	if (shmdt(sharedMem)) {
-		perror("Shared memory detach failed");
-		exit(1);
+		perror(" manage.c: shmdt(): shared memory failed to detach!");
+		exit(EXIT_FAILURE);
 	}
 	if (shmctl(sid, IPC_RMID, 0)) {
-		perror("shared memory IPC_RMID failed");
-		exit(1);
+		perror(" manage.c: shmctl(): shared memory fail to control IPC_RMID!");
+		exit(EXIT_FAILURE);
 	}
-	if (msgctl(qid, IPC_RMID, NULL)) {
-		perror("message queue IPC_RMID failed");
-	}
-	exit(0);
-}
-
-// finds free slot in statistics table, or -1 if there are none
-int findIndex() {
-	int i;
-	for (i = 0; i < BITMAP_INT_LEN; i++) {
-		if (sharedMem->proc[i].pid == 0) {
-			return i;
-		}
-	}
-	return -1;
-}
-
-// main manage loop
-int main(int argc, char *argv[]) {
-	int processIndex;
-	int perfectIndex = 0;
 	
-	// create, attach, and zero-out shared memory segment
-	// if the shared memory segment already exists, then that means there
-	// is another instance of manage running, at which point we must exit
+	if (msgctl(qid, IPC_RMID, NULL)) {
+		perror(" manage.c: msgctl(): message queue failed to control IPC_RMID!");
+	}
+	exit(EXIT_SUCCESS);
+}
+
+
+int main(int argc, char *argv[]) {
+	int i=0;
+	int proc_ind = -1;
+	int PN_ind= 0;
+	int flag=0, tmp=0;
+	struct My_Msg message;
+
 	sid = shmget(SHMM_KEY, sizeof(struct Shared_Info_Block), IPC_CREAT | IPC_EXCL | 0666);
 	if (sid == -1) {
 		perror("There can only be one instance of manage!");
 		exit(1);
 	}
 	sharedMem = shmat(sid, NULL, 0);
-	memset(sharedMem->bitmap, 0, sizeof(sharedMem->bitmap));
-	memset(sharedMem->pnums, 0, sizeof(sharedMem->pnums));
-	memset(sharedMem->proc, 0, sizeof(sharedMem->proc));
-
-	// get message queue
-	// if message queu already exists, then that means there is another
-	// intance of manage running, at which point we must exit
+	memset(sharedMem, 0, sizeof(struct Shared_Info_Block));
 	qid = msgget(MESQ_KEY, IPC_CREAT | IPC_EXCL | 0666);
 	if (qid == -1) {
 		perror("There can only be one instance of manage!");
 		exit(1);
 	}
-	struct My_Msg message;
-
-	// set up signal behavior
 	struct sigaction signal;
 	memset(&signal, 0, sizeof(signal));
 	signal.sa_handler = handler;
@@ -112,52 +88,75 @@ int main(int argc, char *argv[]) {
 		exit(EXIT_FAILURE);
 	}
 
-	// loops and waits for messages
 	while (1) {
-		// we only want messages of type GET_PROCESS_ID, GET_MANAGE_ID, TP_NUM_FOUND_PERFECT
-		// aka "incoming" messages
 		msgrcv(qid, &message, sizeof(message.msg), -3, 0);
-		//printf("Received message!\n");
-
 		if (message.msgtype == TP_PROC_INDEX) {
-			//printf("Process index %d requested from pid %d\n", processIndex, message.msg);
-			// only respond with an index if there is one available,
-			// otherwise kill the requesting process
-			processIndex = findIndex();
-			if (processIndex > -1) {
-				sharedMem->proc[processIndex].pid = message.msg;
+			proc_ind = -1;
+			for (i = 0; i < BITMAP_INT_LEN; i++){
+				if ((sharedMem->proc[i].pid) == 0) {proc_ind=i; break;}
+			}
+			if (proc_ind > -1) {
+				sharedMem->proc[proc_ind].pid = message.msg;
 				message.msgtype = IS_PROC_INDEX;
-				message.msg = processIndex;
+				message.msg = proc_ind;
 				if (msgsnd(qid, &message, sizeof(message.msg), 0) != 0) {
-					perror("Manage message send failed");
-					exit(1);
+					perror(" manage.c: main(): failed to send message to compute!");
+					handler(0);
+					exit(EXIT_FAILURE);
 				}
-				//processIndex++;
-			} else {
-				kill(message.msg, SIGKILL);
-			}
+			} else {kill(message.msg, SIGKILL);} // unkown type
 		} else if (message.msgtype == TP_NUM_FOUND_PERFECT) {
-			//printf("Perfect number %d received\n", message.msg);
-
-			// check if that perfect number has already been found
-			int i, found = 0;
-			for (i = 0; i < perfectIndex; i++) {
+			flag = 0;
+			for (i = 0; i < PN_ind; i++) {
 				if (sharedMem->pnums[i] == message.msg) {
-					found = 1;
-					break;
+					flag = 1; break;
 				}
 			}
-			if (found == 0) {
-				sharedMem->pnums[perfectIndex] = message.msg;
-				perfectIndex++;
+			if (flag == 0) {
+				sharedMem->pnums[PN_ind] = message.msg;
+				PN_ind++;
 			}
+			else
+				printf(" Message: perfect number %d has been found by other process.\n", message.msg);
 		} else if (message.msgtype == TP_MANAGE_PID) {
 			message.msgtype = IS_MANAGE_PID;
 			message.msg = getpid();
 			if (msgsnd(qid, &message, sizeof(message.msg), 0) != 0) {
-				perror("Manage PID message send failed");
-				exit(1);
+				perror(" manage.c: failed to send manage pid!");
+				handler(0);
+				exit(EXIT_FAILURE);
 			}
+		}
+		else{
+			printf(" manage.c: wrong message type!\n");
+			for (i = 0; i < PROCESS_LEN; i++) {
+				tmp = (sharedMem->proc[i].pid);
+				if ( tmp != 0) {
+					if (kill(tmp, SIGINT) != 0) {
+						perror(" manage.c: handler(): failed to kill computing process!");
+						exit(EXIT_FAILURE);
+					}
+				}
+			}
+			sleep(5);
+			if (shmdt(sharedMem)) {
+				perror(" manage.c: shmdt(): shared memory failed to detach!");
+				exit(EXIT_FAILURE);
+			}
+			if (shmctl(sid, IPC_RMID, 0)) {
+				perror(" manage.c: shmctl(): shared memory fail to control IPC_RMID!");
+				exit(EXIT_FAILURE);
+			}
+			
+			if (msgctl(qid, IPC_RMID, NULL)) {
+				perror(" manage.c: msgctl(): message queue failed to control IPC_RMID!");
+			}
+			exit(EXIT_FAILURE);
 		}
 	}
 }
+
+
+//memset(sharedMem->proc, 0, sizeof(sharedMem->proc));
+//memset(sharedMem->bitmap, 0, sizeof(sharedMem->bitmap));
+//memset(sharedMem->pnums, 0, sizeof(sharedMem->pnums));
