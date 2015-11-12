@@ -45,15 +45,15 @@ int compute(int num2start) {
 	int i=0, sums=0, flag2 = 0;
 
 	if ((sid = shmget(SHMM_KEY, sizeof(struct Shared_Info_Block), 0)) == -1 ) {
-		perror(" compute.c: Shared memory segment has not been created!");
+		perror(" compute.c: Shared memory segment has not been created!\n");
 		exit(EXIT_FAILURE);
 	}
 	if ((sharedMem = shmat(sid, NULL, 0)) == (void *) -1) {
-		perror(" compute.c: Shared memory segment has not been created!");
+		perror(" compute.c: Shared memory segment has not been created!\n");
 		exit(EXIT_FAILURE);
 	}
 	if ((qid = msgget(MESQ_KEY, 0)) == -1) {
-		perror(" compute.c: Message queue has not been created!");
+		perror(" compute.c: Message queue has not been created!\n");
 		exit(EXIT_FAILURE);
 	}
 
@@ -61,7 +61,7 @@ int compute(int num2start) {
 	pidNow = getpid();
 	message.msg = pidNow;
 	if (msgsnd(qid, &message, sizeof(message.msg), 0) != 0) {
-		perror(" compute.c: compute(): message cannot be send to manage!");
+		perror(" compute.c: compute(): message cannot be send to manage!\n");
 		exit(EXIT_FAILURE);
 	}
 	msgrcv(qid, &message, sizeof(message.msg), IS_PROC_INDEX, 0); // get an process 'id' from manage 

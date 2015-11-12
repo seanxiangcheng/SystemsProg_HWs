@@ -50,7 +50,7 @@ int main(int argc, char *argv[]) {
 		exit(EXIT_FAILURE);
 	}
 	if ((sharedMem = shmat(sid, NULL, 0)) == (void *) -1) {
-		perror(" report.c: Shared memory segment does not exist!");
+		perror(" report.c: Shared memory segment does not exist!\n");
 		exit(EXIT_FAILURE);
 	}
 	if ((qid = msgget(MESQ_KEY, 0)) == -1) {
