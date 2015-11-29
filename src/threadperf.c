@@ -102,6 +102,15 @@ int main(int argc, char *argv[]){
     
     Max = atoll(argv[1]);
     Block = atoi(argv[2]);
+    if(Block<1){
+	printf(" Message: Block size %d is too small; reset to 2!\n", Block);
+	Block = 2;
+    }
+    else if(Block > Max){
+	printf(" Message: Block size %d is too big; reset to 2!\n", Block);
+	Block = 2;
+    }
+    
     if(Max>MAX2TEST){
 	printf(" Message: %lld is too big; reset to %d", Max, MAX2TEST);
 	Max = MAX2TEST;
@@ -150,6 +159,7 @@ int main(int argc, char *argv[]){
 
     while(1){
 	memset(Cmd, '\0', sizeof(char)*2*CMD_LEN);
+	fflush(stdout);
 	printf("xcheng7>> ");
 	read_len = getline(&Line, &read_ok, stdin);
 	cmd_code = getcmd(read_len);
@@ -212,6 +222,7 @@ int main(int argc, char *argv[]){
 		    
 	    case C_WAIT:
 		    Si = atoi(Cmd[1]);
+		    printf(" waiting...\n");
 		    sleep(Si);
 		    break;
 		    
@@ -323,6 +334,8 @@ void * compute(void *ki) {
 	    }
 	    if(num2test>=num2start && all_done_flag==1) {
 		Threads[tid_ind].curStatus = T_FINISHED;
+		printf("\n All numbers has been tested! Ready to terminate the process!\n");
+		quit_threads();
 		pthread_exit(NULL);
 	    }
 	    intnow = Threads[tid_ind].curBlock / 32;
