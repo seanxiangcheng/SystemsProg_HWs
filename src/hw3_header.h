@@ -50,7 +50,7 @@ struct Proc_Info{
 };
 
 struct Shared_Info_Block {
-	int bitmap[BITMAP_INT_LEN];	// bitmap array
+	unsigned int bitmap[BITMAP_INT_LEN];	// bitmap array
 	int pnums[PERFECT_LEN];	// stores perfect numbers when found
 	struct Proc_Info proc[PROCESS_LEN];	// array of process statistics
 };

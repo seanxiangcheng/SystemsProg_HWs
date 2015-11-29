@@ -46,14 +46,17 @@ int compute(int num2start) {
 
 	if ((sid = shmget(SHMM_KEY, sizeof(struct Shared_Info_Block), 0)) == -1 ) {
 		perror(" compute.c: Shared memory segment has not been created!\n");
+		handler_kill(1);
 		exit(EXIT_FAILURE);
 	}
 	if ((sharedMem = shmat(sid, NULL, 0)) == (void *) -1) {
 		perror(" compute.c: Shared memory segment has not been created!\n");
+		handler_kill(1);
 		exit(EXIT_FAILURE);
 	}
 	if ((qid = msgget(MESQ_KEY, 0)) == -1) {
 		perror(" compute.c: Message queue has not been created!\n");
+		handler_kill(1);
 		exit(EXIT_FAILURE);
 	}
 
@@ -62,6 +65,7 @@ int compute(int num2start) {
 	message.msg = pidNow;
 	if (msgsnd(qid, &message, sizeof(message.msg), 0) != 0) {
 		perror(" compute.c: compute(): message cannot be send to manage!\n");
+		handler_kill(1);
 		exit(EXIT_FAILURE);
 	}
 	msgrcv(qid, &message, sizeof(message.msg), IS_PROC_INDEX, 0); // get an process 'id' from manage 
@@ -91,6 +95,7 @@ int compute(int num2start) {
 				message.msg = num2test;
 				if (msgsnd(qid, &message, sizeof(message.msg), 0) != 0) {
 					perror(" compute.c: compute(): fail to send perfect number to manage!");
+					handler_kill(1);
 					exit(EXIT_FAILURE);
 				}
 			} 
@@ -118,14 +123,17 @@ int main(int argc, char *argv[]) {
 	signal.sa_handler = handler_kill;
 	if (sigaction(SIGINT, &signal, NULL) != 0) {
 		perror(" compute.c: main(): failed to sigation SIGINT");
+		handler_kill(1);
 		exit(EXIT_FAILURE);
 	}
 	if (sigaction(SIGQUIT, &signal, NULL) != 0) {
 		perror(" compute.c: main(): failed to sigation SIGQUIT");
+		handler_kill(1);
 		exit(EXIT_FAILURE);
 	}
 	if (sigaction(SIGHUP, &signal, NULL) != 0) {
 		perror(" compute.c: main(): failed to sigation SIGHUP");
+		handler_kill(1);
 		exit(EXIT_FAILURE);
 	}
 	compute(num2start);

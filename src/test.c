@@ -37,6 +37,11 @@ int main (int argc, char *argv[])
 {
 	int a;
 	printf(" size of integer: %d\n", (a = 5));
- 
+	printf(" isspace(): %d\n\n", isspace('\t'));
+	char strs[10];
+	while(1){
+		scanf("%s", strs);
+		printf("%s : %d\n", strs, atoi(strs));
+	}
 	return(0);
 }
